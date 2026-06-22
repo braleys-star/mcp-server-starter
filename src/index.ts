@@ -48,21 +48,27 @@ const isCloud = process.env.MCP_TRANSPORT === "http";
 if (isCloud) {
   const port = parseInt(process.env.PORT || "3000");
   const app = express();
+  app.use(express.json());
 
-  // Health check endpoint for Railway
+  // Health check
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", version: "0.2.0" });
   });
 
-  // Create the StreamableHTTP transport (no port option — it's a request handler)
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-
-  // Mount the MCP transport handler at /mcp
+  // One transport per session
   app.all("/mcp", async (req, res) => {
-    await transport.handleRequest(req, res);
+    console.log(`[MCP] ${req.method} ${req.url}`);
+    try {
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch (err) {
+      console.error("[MCP] Error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: String(err) });
+      }
+    }
   });
-
-  await server.connect(transport);
 
   app.listen(port, "0.0.0.0", () => {
     console.log(`MCP server running on HTTP port ${port}`);
