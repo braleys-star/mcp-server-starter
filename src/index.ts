@@ -48,7 +48,7 @@ const isCloud = process.env.MCP_TRANSPORT === "http";
 if (isCloud) {
   const port = parseInt(process.env.PORT || "3000");
 
-  // Health check endpoint for Railway
+  // Health check server
   const healthServer = http.createServer((req, res) => {
     if (req.url === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -58,11 +58,21 @@ if (isCloud) {
       res.end();
     }
   });
-  healthServer.listen(port + 1, () => {
-    console.log(`Health check running on port ${port + 1}`);
+  healthServer.listen(port, () => {
+    console.log(`Server listening on port ${port}`);
   });
 
-  const transport = new StreamableHTTPServerTransport({ port });
+  // MCP over HTTP — attach to existing http server
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+
+  healthServer.on("request", (req, res) => {
+    if (req.url === "/mcp") {
+      transport.handleRequest(req, res);
+    }
+  });
+
   await server.connect(transport);
   console.log(`MCP server running on HTTP port ${port}`);
 } else {
