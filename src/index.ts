@@ -1,4 +1,3 @@
-$code = @'
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -59,8 +58,3 @@ if (isCloud) {
   await server.connect(transport);
   console.error("MCP server running on stdio (local dev)");
 }
-'@
-Set-Content -Path src\index.ts -Value $code
-git add src\index.ts
-git commit -m "fix: proper session management for MCP handshake"
-git push
