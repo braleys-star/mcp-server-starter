@@ -36,3 +36,4 @@ This file tells VS Code (or any MCP-aware client) how to start the server —
 runs it via `npx tsx src/index.ts` straight from your workspace folder, no
 build step needed for local dev. Once you trust the server, VS Code will
 launch it automatically when the workspace opens.
+# SSE transport
