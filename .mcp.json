@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mcp-server-starter": {
+      "command": "npx",
+      "args": ["tsx", "src/index.ts"],
+      "cwd": "C:\\Users\\brale\\mcp-server-starter"
+    }
+  }
+}
