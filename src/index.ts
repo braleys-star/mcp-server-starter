@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import http from "http";
+import express from "express";
 
 // File tools
 import { writeFileSchema, writeFileTool } from "./tools/write_file.js";
@@ -47,34 +47,26 @@ const isCloud = process.env.MCP_TRANSPORT === "http";
 
 if (isCloud) {
   const port = parseInt(process.env.PORT || "3000");
+  const app = express();
 
-  // Health check server
-  const healthServer = http.createServer((req, res) => {
-    if (req.url === "/health") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", version: "0.2.0" }));
-    } else {
-      res.writeHead(404);
-      res.end();
-    }
-  });
-  healthServer.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
+  // Health check endpoint for Railway
+  app.get("/health", (_req, res) => {
+    res.json({ status: "ok", version: "0.2.0" });
   });
 
-  // MCP over HTTP — attach to existing http server
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-  });
+  // Create the StreamableHTTP transport (no port option — it's a request handler)
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
-  healthServer.on("request", (req, res) => {
-    if (req.url === "/mcp") {
-      transport.handleRequest(req, res);
-    }
+  // Mount the MCP transport handler at /mcp
+  app.all("/mcp", async (req, res) => {
+    await transport.handleRequest(req, res);
   });
 
   await server.connect(transport);
-  console.log(`MCP server running on HTTP port ${port}`);
+
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`MCP server running on HTTP port ${port}`);
+  });
 } else {
   const transport = new StdioServerTransport();
   await server.connect(transport);
