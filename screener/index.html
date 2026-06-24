@@ -1,0 +1,5 @@
+$token = "19990134"
+$base64 = "PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KPGhlYWQ+CjxtZXRhIGNoYXJzZXQ9IlVURi04Ij4KPG1ldGEgbmFtZT0idmlld3BvcnQiIGNvbnRlbnQ9IndpZHRoPWRldmljZS13aWR0aCwgaW5pdGlhbC1zY2FsZT0xLjAiPgo8dGl0bGU+T3RpcyBTdG9jayBTY3JlZW5lcjwvdGl0bGU+CjxsaW5rIHJlbD0ic3R5bGVzaGVldCIgaHJlZj0iaHR0cHM6Ly9jZG4uanNkZWxpdnIubmV0L25wbS9AdGFibGVyL2ljb25zLXdlYmZvbnRAMi40NC4wL3RhYmxlci1pY29ucy5taW4uY3NzIj4KPHNjcmlwdCBzcmM9Imh0dHBzOi8vY2RuanMuY2xvdWRmbGFyZS5jb20vYWpheC9saWJzL0NoYXJ0LmpzLzQuNC4xL2NoYXJ0LnVtZC5qcyI+PC9zY3JpcHQ+"
+$sha = (Invoke-RestMethod -Uri "https://api.github.com/repos/braleys-star/mcp-server-starter/contents/screener/index.html" -Headers @{ Authorization = "Bearer $token" } -ErrorAction SilentlyContinue).sha
+$body = @{ message = "feat: add Otis Stock Screener"; content = $base64; sha = $sha } | ConvertTo-Json
+Invoke-RestMethod -Uri "https://api.github.com/repos/braleys-star/mcp-server-starter/contents/screener/index.html" -Method PUT -Headers @{ Authorization = "Bearer $token" } -Body $body -ContentType "application/json"
