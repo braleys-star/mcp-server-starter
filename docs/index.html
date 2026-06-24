@@ -82,6 +82,21 @@ tr:hover td { background: #162032; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; display: inline-block; }
 .price-select { font-size: 12px; padding: 4px 8px; height: 30px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #94a3b8; outline: none; cursor: pointer; transition: border 0.15s; }
 .price-select:focus, .price-select:hover { border-color: #185FA5; color: #38bdf8; }
+.thumb-canvas { cursor: pointer; border-radius: 4px; display: block; transition: opacity 0.15s; }
+.thumb-canvas:hover { opacity: 0.75; }
+.chart-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.78); z-index: 1000; align-items: center; justify-content: center; }
+.chart-modal.open { display: flex; }
+.modal-card { background: #0f1117; border: 1px solid #334155; border-radius: 16px; width: 700px; max-width: 96vw; max-height: 92vh; overflow-y: auto; }
+.modal-header { display: flex; align-items: center; gap: 12px; padding: 18px 20px 14px; border-bottom: 1px solid #1e293b; flex-wrap: wrap; }
+.modal-close { margin-left: auto; cursor: pointer; font-size: 18px; color: #64748b; background: none; border: none; line-height: 1; padding: 4px 6px; border-radius: 6px; }
+.modal-close:hover { color: #e2e8f0; background: #1e293b; }
+.modal-body { padding: 14px 20px 20px; }
+.modal-stats { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 12px; font-size: 12px; }
+.modal-stat { color: #64748b; }
+.modal-stat strong { color: #94a3b8; }
+.ind-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: #64748b; align-items: center; }
+.ind-swatch { display: inline-block; width: 20px; height: 2px; border-radius: 1px; vertical-align: middle; margin-right: 4px; }
+.ind-box { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
 @media (max-width: 700px) { .chart-section { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -176,10 +191,11 @@ tr:hover td { background: #162032; }
           <th onclick="sortTable('surprise')">EPS Surprise ↕</th>
           <th onclick="sortTable('price')">Price ↕</th>
           <th onclick="sortTable('change')">Change ↕</th>
+          <th style="cursor:default;">Chart</th>
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr><td colspan="9"><div class="loading"><div class="spinner"></div><span>Enter your API key and click Run Screener, or try Demo mode</span></div></td></tr>
+        <tr><td colspan="10"><div class="loading"><div class="spinner"></div><span>Enter your API key and click Run Screener, or try Demo mode</span></div></td></tr>
       </tbody>
     </table>
   </div>
@@ -227,6 +243,36 @@ tr:hover td { background: #162032; }
   </div>
 </div>
 
+<div class="chart-modal" id="chartModal" onclick="closeChartModal(event)">
+  <div class="modal-card">
+    <div class="modal-header">
+      <span id="mRankBadge"></span>
+      <div>
+        <div id="mTicker" style="font-size:18px;font-weight:600;color:#38bdf8;"></div>
+        <div id="mCompany" style="font-size:12px;color:#475569;"></div>
+      </div>
+      <div style="margin-left:8px;">
+        <div id="mPrice" style="font-size:15px;font-weight:600;color:#f1f5f9;"></div>
+        <div id="mChange" style="font-size:12px;"></div>
+      </div>
+      <button class="modal-close" onclick="closeChartModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-stats" id="mStats"></div>
+      <canvas id="modalCanvas" width="640" height="390" style="width:100%;border-radius:8px;background:#0E1B2C;"></canvas>
+      <div class="ind-legend">
+        <span><span class="ind-swatch" style="background:#4FA3E3;height:2px;width:20px;"></span>Jaw (13,8)</span>
+        <span><span class="ind-swatch" style="background:#E8B339;"></span>Teeth (8,5)</span>
+        <span><span class="ind-swatch" style="background:#2FBF71;"></span>Lips (5,3)</span>
+        <span><span class="ind-swatch" style="background:#9BB0C7;border-top:1px dashed #9BB0C7;"></span>BB (20,2)</span>
+        <span><span class="ind-box" style="background:#2FBF71;"></span>Impulse Bullish</span>
+        <span><span class="ind-box" style="background:#E0703E;"></span>Bearish</span>
+        <span><span class="ind-box" style="background:#4FA3E3;"></span>Neutral</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 let allStocks=[], sortCol='rank', sortDir=1, rankChart, sectorChart, activeRank='all';
 const WATCHLISTS={sp500:['AAPL','MSFT','NVDA','GOOGL','AMZN','META','TSLA','JPM','JNJ','V','PG','UNH','HD','MA','MRK'],tech:['AAPL','MSFT','NVDA','GOOGL','META','TSLA','AMD','INTC','CRM','ORCL','AVGO','QCOM','MU','AMAT','LRCX']};
@@ -249,7 +295,7 @@ async function fetchStock(ticker,apiKey){
     const upside=Math.min(100,Math.max(0,40+avgSurprise+Math.random()*30));
     const surpriseScore=Math.min(100,Math.max(0,50+avgSurprise*1.5));
     const rank=calcZacksRank(agreement,magnitude,upside,surpriseScore);
-    return{ticker,sector:SECTORS[ticker]||'Other',price,change,agreement:Math.round(agreement),magnitude:Math.round(magnitude),upside:Math.round(upside),surprise:parseFloat(avgSurprise.toFixed(1)),rank,vgm:`${scoreGrade(Math.random()*100)}/${scoreGrade(Math.random()*100)}/${scoreGrade(agreement)}`};
+    return{ticker,sector:SECTORS[ticker]||'Other',price,change,agreement:Math.round(agreement),magnitude:Math.round(magnitude),upside:Math.round(upside),surprise:parseFloat(avgSurprise.toFixed(1)),rank,vgm:`${scoreGrade(Math.random()*100)}/${scoreGrade(Math.random()*100)}/${scoreGrade(agreement)}`,ohlcv:genOHLCV(ticker,price,rank)};
   }catch(e){return null;}
 }
 async function runScreener(){
@@ -284,12 +330,13 @@ function loadDemo(){
     {ticker:'TSLA',sector:'Consumer',price:248.50,change:-2.1,agreement:38,magnitude:29,upside:35,surprise:-8.4,rank:4,vgm:'C/D/D'},
     {ticker:'INTC',sector:'Tech',price:31.20,change:-1.4,agreement:22,magnitude:18,upside:24,surprise:-12.1,rank:5,vgm:'D/F/D'},
   ];
+  allStocks.forEach(s=>{s.ohlcv=genOHLCV(s.ticker,s.price,s.rank);});
   renderTable(allStocks);updateMetrics(allStocks);renderCharts(allStocks);
   document.getElementById('statusText').textContent='Demo mode · 12 stocks · Simulated Zacks scores';
 }
 function renderTable(stocks){
   const body=document.getElementById('tableBody');
-  if(!stocks.length){body.innerHTML=`<tr><td colspan="9"><div class="loading"><span>No stocks match this filter</span></div></td></tr>`;return;}
+  if(!stocks.length){body.innerHTML=`<tr><td colspan="10"><div class="loading"><span>No stocks match this filter</span></div></td></tr>`;return;}
   body.innerHTML=stocks.map(s=>{
     const[v,g,m]=s.vgm.split('/');
     return`<tr>
@@ -300,8 +347,14 @@ function renderTable(stocks){
       <td class="${s.surprise>=0?'pos':'neg'}">${s.surprise>=0?'+':''}${s.surprise}%</td>
       <td>$${s.price.toFixed(2)}</td>
       <td class="${s.change>=0?'pos':'neg'}">${s.change>=0?'▲':'▼'} ${Math.abs(s.change).toFixed(1)}%</td>
+      <td style="padding:8px 16px;"><canvas class="thumb-canvas" width="80" height="48" data-ticker="${s.ticker}" onclick="openChartModal('${s.ticker}')"></canvas></td>
     </tr>`;
   }).join('');
+  stocks.forEach(s=>{
+    if(!s.ohlcv)return;
+    const c=body.querySelector(`canvas[data-ticker="${s.ticker}"]`);
+    if(c)drawThumb(c,s.ohlcv);
+  });
 }
 function updateMetrics(stocks){
   document.getElementById('m1').textContent=stocks.length;
