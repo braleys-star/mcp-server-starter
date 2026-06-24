@@ -51,11 +51,3 @@ await transport.handlePostMessage(req, res);
 app.listen(port, "0.0.0.0", () => {
 console.log(`MCP server running on HTTP port ${port}`);
 });
-```
-
-
-
-
-
-
-
