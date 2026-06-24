@@ -397,6 +397,109 @@ function sortTable(col){
   allStocks.sort((a,b)=>typeof a[col]==='string'?a[col].localeCompare(b[col])*sortDir:(a[col]-b[col])*sortDir);
   renderTable(allStocks);
 }
+function genOHLCV(ticker,price,rank){
+  const n=60,bias=(3-rank)*0.002;
+  let seed=ticker.split('').reduce((a,c)=>a*31+c.charCodeAt(0),0);
+  const rnd=()=>{seed=(seed*1664525+1013904223)&0xffffffff;return(seed>>>0)/0xffffffff;};
+  let close=price*(0.82+rnd()*0.12);
+  const bars=[];
+  for(let i=0;i<n;i++){
+    const range=close*(0.008+rnd()*0.018);
+    const dir=(rnd()-0.5+bias)*2;
+    const open=close;
+    close=Math.max(close*0.5,close+dir*range);
+    const h=Math.max(open,close)+rnd()*range*0.4;
+    const l=Math.min(open,close)-rnd()*range*0.4;
+    bars.push({o:+open.toFixed(2),h:+h.toFixed(2),l:+l.toFixed(2),c:+close.toFixed(2),v:Math.floor(1e6+rnd()*9e6)});
+  }
+  return bars;
+}
+function drawThumb(canvas,ohlcv){
+  const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
+  ctx.fillStyle='#0E1B2C';ctx.fillRect(0,0,w,h);
+  const cls=ohlcv.map(b=>b.c);
+  const mn=Math.min(...cls),mx=Math.max(...cls),rng=mx-mn||1;
+  const sy=v=>h-2-(v-mn)/rng*(h-4),sx=i=>i/(cls.length-1)*(w-2)+1;
+  const rising=cls[cls.length-1]>=cls[0];
+  ctx.strokeStyle=rising?'#34d399':'#f87171';ctx.lineWidth=1.5;
+  ctx.beginPath();
+  cls.forEach((c,i)=>i===0?ctx.moveTo(sx(i),sy(c)):ctx.lineTo(sx(i),sy(c)));
+  ctx.stroke();
+  ctx.lineTo(sx(cls.length-1),h);ctx.lineTo(sx(0),h);ctx.closePath();
+  ctx.fillStyle=rising?'rgba(52,211,153,0.12)':'rgba(248,113,113,0.12)';ctx.fill();
+}
+function _smma(data,period,shift){
+  const r=new Array(data.length).fill(null);
+  let sum=0;
+  for(let i=0;i<period&&i<data.length;i++)sum+=data[i];
+  if(data.length>=period)r[period-1]=sum/period;
+  for(let i=period;i<data.length;i++)r[i]=(r[i-1]*(period-1)+data[i])/period;
+  const s=new Array(data.length).fill(null);
+  for(let i=0;i+shift<data.length;i++)s[i+shift]=r[i];
+  return s;
+}
+function _sma(data,period){return data.map((_,i)=>i<period-1?null:data.slice(i-period+1,i+1).reduce((a,b)=>a+b,0)/period);}
+function _ema(data,period){
+  const k=2/(period+1),r=new Array(data.length).fill(null);
+  let started=false,prev=0;
+  for(let i=0;i<data.length;i++){
+    if(!started&&i===period-1){prev=data.slice(0,period).reduce((a,b)=>a+b,0)/period;r[i]=prev;started=true;}
+    else if(started){r[i]=data[i]*k+prev*(1-k);prev=r[i];}
+  }
+  return r;
+}
+function drawModalChart(canvas,ohlcv){
+  const ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle='#0E1B2C';ctx.fillRect(0,0,W,H);
+  const n=ohlcv.length,pad={l:8,r:8,t:12,b:12};
+  const pW=W-pad.l-pad.r,pH=H-pad.t-pad.b;
+  const cls=ohlcv.map(b=>b.c),mids=ohlcv.map(b=>(b.h+b.l)/2);
+  const jaw=_smma(mids,13,8),teeth=_smma(mids,8,5),lips=_smma(mids,5,3);
+  const bbM=_sma(cls,20);
+  const bbStd=cls.map((_,i)=>{if(i<19)return null;const sl=cls.slice(i-19,i+1),m=sl.reduce((a,b)=>a+b,0)/20;return Math.sqrt(sl.reduce((a,b)=>a+(b-m)**2,0)/20);});
+  const bbU=bbM.map((m,i)=>m&&bbStd[i]?m+2*bbStd[i]:null),bbL=bbM.map((m,i)=>m&&bbStd[i]?m-2*bbStd[i]:null);
+  const e13=_ema(cls,13),e12=_ema(cls,12),e26=_ema(cls,26);
+  const macd=e12.map((v,i)=>v&&e26[i]?v-e26[i]:null);
+  const impCol=cls.map((_,i)=>{if(i<1)return'#4FA3E3';const er=e13[i]&&e13[i-1]&&e13[i]>e13[i-1],mr=macd[i]&&macd[i-1]&&macd[i]>macd[i-1];return er&&mr?'#2FBF71':(!er&&!mr?'#E0703E':'#4FA3E3');});
+  const allV=[...ohlcv.flatMap(b=>[b.h,b.l]),...[...jaw,...teeth,...lips,...bbU,...bbL].filter(v=>v)];
+  const mn=Math.min(...allV),mx=Math.max(...allV),rng=mx-mn||1;
+  const sy=v=>pad.t+pH-(v-mn)/rng*pH,sx=i=>pad.l+i*(pW/n)+pW/n/2;
+  const bw=Math.max(1,pW/n-1);
+  ctx.strokeStyle='rgba(100,116,139,0.15)';ctx.lineWidth=1;
+  for(let y=0;y<=4;y++){ctx.beginPath();ctx.moveTo(pad.l,pad.t+pH/4*y);ctx.lineTo(W-pad.r,pad.t+pH/4*y);ctx.stroke();}
+  ctx.beginPath();let fb=true;
+  for(let i=0;i<n;i++){if(!bbU[i])continue;fb?ctx.moveTo(sx(i),sy(bbU[i])):ctx.lineTo(sx(i),sy(bbU[i]));fb=false;}
+  for(let i=n-1;i>=0;i--){if(!bbL[i])continue;ctx.lineTo(sx(i),sy(bbL[i]));}
+  ctx.closePath();ctx.fillStyle='rgba(155,176,199,0.06)';ctx.fill();
+  const dl=(data,col,dash=[])=>{ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.setLineDash(dash);ctx.beginPath();let f=true;data.forEach((v,i)=>{if(v===null){f=true;return;}f?ctx.moveTo(sx(i),sy(v)):ctx.lineTo(sx(i),sy(v));f=false;});ctx.stroke();ctx.setLineDash([]);};
+  dl(bbU,'rgba(155,176,199,0.45)',[3,3]);dl(bbL,'rgba(155,176,199,0.45)',[3,3]);
+  dl(jaw,'#4FA3E3');dl(teeth,'#E8B339');dl(lips,'#2FBF71');
+  for(let i=0;i<n;i++){
+    const b=ohlcv[i],x=pad.l+i*(pW/n),col=impCol[i];
+    ctx.strokeStyle=col;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x+bw/2+0.5,sy(b.h));ctx.lineTo(x+bw/2+0.5,sy(b.l));ctx.stroke();
+    const top=Math.min(sy(b.o),sy(b.c)),bh=Math.max(1,Math.abs(sy(b.o)-sy(b.c)));
+    ctx.fillStyle=col;ctx.fillRect(x+0.5,top,bw,bh);
+  }
+}
+function openChartModal(ticker){
+  const s=allStocks.find(x=>x.ticker===ticker);
+  if(!s||!s.ohlcv)return;
+  document.getElementById('mRankBadge').innerHTML=`<span class="rank-badge rank-${s.rank}">${s.rank}</span>`;
+  document.getElementById('mTicker').textContent=s.ticker;
+  document.getElementById('mCompany').textContent=s.sector;
+  document.getElementById('mPrice').textContent=`$${s.price.toFixed(2)}`;
+  const ce=document.getElementById('mChange');ce.textContent=`${s.change>=0?'▲':'▼'} ${Math.abs(s.change).toFixed(1)}%`;ce.style.color=s.change>=0?'#34d399':'#f87171';
+  document.getElementById('mStats').innerHTML=`<div class="modal-stat"><strong>Agreement</strong> ${s.agreement}%</div><div class="modal-stat"><strong>Magnitude</strong> ${s.magnitude}%</div><div class="modal-stat"><strong>Upside</strong> ${s.upside}%</div><div class="modal-stat"><strong>EPS Surprise</strong> ${s.surprise>=0?'+':''}${s.surprise}%</div><div class="modal-stat"><strong>VGM</strong> ${s.vgm}</div>`;
+  drawModalChart(document.getElementById('modalCanvas'),s.ohlcv);
+  document.getElementById('chartModal').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeChartModal(event){
+  if(event&&event.target!==document.getElementById('chartModal'))return;
+  document.getElementById('chartModal').classList.remove('open');
+  document.body.style.overflow='';
+}
 </script>
 </body>
 </html>
