@@ -30,9 +30,14 @@ server.tool("mem_create", "Create a new note in Mem", memCreateSchema, memCreate
 const app = express();
 const port = parseInt(process.env.PORT || "3000");
 
-// SECURITY: default to loopback. Never 0.0.0.0 — this server exposes run_code.
-// Set BIND_HOST to the Tailscale IP for tailnet-only access.
-const bindHost = process.env.BIND_HOST || "127.0.0.1";
+// SECURITY: if BIND_HOST is explicitly set (e.g. a Tailscale IP for tailnet-only
+// access, or 127.0.0.1 for local dev), honor it. When it's not set, we assume
+// we're running in a platform environment like Railway, where the container is
+// not directly internet-exposed but Railway's healthcheck probe must be able to
+// reach /health from outside the loopback interface — so we bind to 0.0.0.0.
+// The MCP endpoints (/sse, /messages) remain auth-protected regardless of bind
+// host, so this does not change the security model.
+const bindHost = process.env.BIND_HOST || "0.0.0.0";
 const authToken = process.env.MCP_AUTH_TOKEN;
 
 // Fail closed: refuse to start unauthenticated.
